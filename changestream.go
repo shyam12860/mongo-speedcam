@@ -169,18 +169,7 @@ func _runChangeStreamLoop(
 	cs, err := client.Watch(
 		sctx,
 		mongo.Pipeline{
-			// Stage 1: $project - Remove unnecessary fields for performance
-			{{"$project", bson.D{
-				{"updateDescription", "$$REMOVE"},
-				// Keep all other fields
-				{"_id", 1},
-				{"operationType", 1},
-				{"ns", 1},
-				{"clusterTime", 1},
-				{"fullDocument", 1},
-			}}},
-
-			// Stage 2: $match - Combined filtering for system databases, collections, and namespace
+			// Stage 1: $match - Filter out system databases, collections, and namespace first
 			{{"$match", agg.And{
 				// Database filter: Allow only user databases
 				agg.Expr(agg.Not{agg.Or{
@@ -195,6 +184,17 @@ func _runChangeStreamLoop(
 					bson.D{}, // empty document - matches everything
 					bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
 				},
+			}}},
+
+			// Stage 2: $project - Remove unnecessary fields for performance
+			{{"$project", bson.D{
+				{"updateDescription", "$$REMOVE"},
+				// Keep all other fields
+				{"_id", 1},
+				{"operationType", 1},
+				{"ns", 1},
+				{"clusterTime", 1},
+				{"fullDocument", 1},
 			}}},
 
 			// Stage 3: Final projection with existing logic
