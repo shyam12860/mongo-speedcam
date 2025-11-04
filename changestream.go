@@ -184,7 +184,7 @@ func _runChangeStreamLoop(
 			SetCustomPipeline(bson.M{
 				"showSystemEvents":   true,
 				"showExpandedEvents": true,
-			}),
+			}).SetFullDocument("updateLookup"),
 	)
 	if err != nil {
 		return fmt.Errorf("opening change stream: %w", err)
