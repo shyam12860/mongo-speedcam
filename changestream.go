@@ -180,7 +180,7 @@ func _runChangeStreamLoop(
 				{"fullDocument", 1},
 			}}},
 
-			// Stage 2: $match - Filter out system databases and collections
+			// Stage 2: $match - Combined filtering for system databases, collections, and namespace
 			{{"$match", agg.And{
 				// Database filter: Allow only user databases
 				agg.Expr(agg.Not{agg.Or{
@@ -190,15 +190,14 @@ func _runChangeStreamLoop(
 				}}),
 				// Collection filter: Allow only non-system collections
 				agg.Expr(agg.Not{agg.Eq(0, agg.IndexOfCP("$ns.coll", "system.", 0, 1))}),
+				// Namespace filter: Match everything or explicitly allow rename operations
+				agg.Or{
+					bson.D{}, // empty document - matches everything
+					bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
+				},
 			}}},
 
-			// Stage 3: Namespace filter (when no filter is configured)
-			{{"$match", agg.Or{
-				bson.D{}, // empty document - matches everything
-				bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
-			}}},
-
-			// Stage 4: Final projection with existing logic
+			// Stage 3: Final projection with existing logic
 			{{"$project", bson.D{
 				{"_id", 1},
 				{"clusterTime", 1},
