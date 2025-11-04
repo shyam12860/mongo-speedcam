@@ -169,6 +169,36 @@ func _runChangeStreamLoop(
 	cs, err := client.Watch(
 		sctx,
 		mongo.Pipeline{
+			// Stage 1: $project - Remove unnecessary fields for performance
+			{{"$project", bson.D{
+				{"updateDescription", "$$REMOVE"},
+				// Keep all other fields
+				{"_id", 1},
+				{"operationType", 1},
+				{"ns", 1},
+				{"clusterTime", 1},
+				{"fullDocument", 1},
+			}}},
+
+			// Stage 2: $match - Filter out system databases and collections
+			{{"$match", agg.And{
+				// Database filter: Allow only user databases
+				agg.Expr(agg.Not{agg.Or{
+					agg.In("$ns.db", "mongosync_reserved_for_internal_use", "admin", "local", "config"),
+					agg.Eq(0, agg.IndexOfCP("$ns.db", "mongosync_reserved_for_verification_", 0, 1)),
+					agg.Eq(0, agg.IndexOfCP("$ns.db", "__mdb_internal", 0, 1)),
+				}}),
+				// Collection filter: Allow only non-system collections
+				agg.Expr(agg.Not{agg.Eq(0, agg.IndexOfCP("$ns.coll", "system.", 0, 1))}),
+			}}},
+
+			// Stage 3: Namespace filter (when no filter is configured)
+			{{"$match", agg.Or{
+				bson.D{}, // empty document - matches everything
+				bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
+			}}},
+
+			// Stage 4: Final projection with existing logic
 			{{"$project", bson.D{
 				{"_id", 1},
 				{"clusterTime", 1},

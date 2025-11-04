@@ -24,6 +24,14 @@ func Concat(refs ...any) bson.D {
 	return bson.D{{"$concat", refs}}
 }
 
+func IndexOfCP(input, substring any, start, length int) bson.D {
+	return bson.D{{"$indexOfCP", bson.A{input, substring, start, length}}}
+}
+
+func Expr(expression any) bson.D {
+	return bson.D{{"$expr", expression}}
+}
+
 // ---------------------------------------------
 
 type Not struct {
