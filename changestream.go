@@ -181,7 +181,7 @@ func _runChangeStreamLoop(
 				agg.Expr(agg.Not{agg.Eq(0, agg.IndexOfCP("$ns.coll", "system.", 0, 1))}),
 				// Namespace filter: Match everything or explicitly allow rename operations
 				agg.Or{
-					bson.D{}, // empty document - matches everything
+					bson.D{},                            // empty document - matches everything
 					bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
 				},
 			}}},
@@ -210,6 +210,7 @@ func _runChangeStreamLoop(
 			}}},
 		},
 		options.ChangeStream().
+			SetCustom(bson.M{"$_passthroughToShard": bson.D{{"shard", "shyam_profiling-DEST-Shard-1"}}}).
 			SetCustomPipeline(bson.M{
 				"showSystemEvents":   true,
 				"showExpandedEvents": true,
