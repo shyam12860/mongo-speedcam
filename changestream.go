@@ -169,23 +169,23 @@ func _runChangeStreamLoop(
 	cs, err := client.Watch(
 		sctx,
 		mongo.Pipeline{
-			// Stage 1: $match - Filter out system databases, collections, and namespace first
-			{{"$match", bson.D{
-				// Database filter: Allow only user databases
-				{"ns.db", bson.D{
-					{"$nin", []string{"mongosync_reserved_for_internal_use", "admin", "local", "config", "mongosync_reserved_for_verification_dst_metadata", "mongosync_reserved_for_verification_src_metadata"}},
-					{"$not", bson.D{{"$regex", "^__mdb_internal"}}},
-				}},
-				// Collection filter: Allow only non-system collections
-				{"ns.coll", bson.D{
-					{"$not", bson.D{{"$regex", "^system\\."}}},
-				}},
-				// Namespace filter: Match everything or explicitly allow rename operations
-				{"$or", []bson.D{
-					{},                            // empty document - matches everything
-					{{"operationType", "rename"}}, // explicitly allow rename operations
-				}},
-			}}},
+			//// Stage 1: $match - Filter out system databases, collections, and namespace first
+			//{{"$match", bson.D{
+			//	// Database filter: Allow only user databases
+			//	{"ns.db", bson.D{
+			//		{"$nin", []string{"mongosync_reserved_for_internal_use", "admin", "local", "config", "mongosync_reserved_for_verification_dst_metadata", "mongosync_reserved_for_verification_src_metadata"}},
+			//		{"$not", bson.D{{"$regex", "^__mdb_internal"}}},
+			//	}},
+			//	// Collection filter: Allow only non-system collections
+			//	{"ns.coll", bson.D{
+			//		{"$not", bson.D{{"$regex", "^system\\."}}},
+			//	}},
+			//	// Namespace filter: Match everything or explicitly allow rename operations
+			//	{"$or", []bson.D{
+			//		{},                            // empty document - matches everything
+			//		{{"operationType", "rename"}}, // explicitly allow rename operations
+			//	}},
+			//}}},
 
 			// Stage 3: Final projection with existing logic
 			{{"$project", bson.D{
