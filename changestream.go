@@ -177,9 +177,9 @@ func _runChangeStreamLoop(
 					{"$not", bson.D{{"$regex", "^__mdb_internal"}}},
 				}},
 				// Collection filter: Allow only non-system collections
-				{"ns.coll", bson.D{
-					{"$not", bson.D{{"$regex", "^system\\."}}},
-				}},
+				//{"ns.coll", bson.D{
+				//	{"$not", bson.D{{"$regex", "^system\\."}}},
+				//}},
 				// Namespace filter: Match everything or explicitly allow rename operations
 				{"$or", []bson.D{
 					{},                            // empty document - matches everything
