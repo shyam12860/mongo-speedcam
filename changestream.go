@@ -170,20 +170,21 @@ func _runChangeStreamLoop(
 		sctx,
 		mongo.Pipeline{
 			// Stage 1: $match - Filter out system databases, collections, and namespace first
-			{{"$match", agg.And{
+			{{"$match", bson.D{
 				// Database filter: Allow only user databases
-				agg.Expr(agg.Not{agg.Or{
-					agg.In("$ns.db", "mongosync_reserved_for_internal_use", "admin", "local", "config"),
-					agg.Eq(0, agg.IndexOfCP("$ns.db", "mongosync_reserved_for_verification_", 0, 1)),
-					agg.Eq(0, agg.IndexOfCP("$ns.db", "__mdb_internal", 0, 1)),
-				}}),
+				{"ns.db", bson.D{
+					{"$nin", []string{"mongosync_reserved_for_internal_use", "admin", "local", "config"}},
+					{"$not", bson.D{{"$regex", "^(mongosync_reserved_for_verification_|__mdb_internal)"}}},
+				}},
 				// Collection filter: Allow only non-system collections
-				agg.Expr(agg.Not{agg.Eq(0, agg.IndexOfCP("$ns.coll", "system.", 0, 1))}),
+				{"ns.coll", bson.D{
+					{"$not", bson.D{{"$regex", "^system\\."}}},
+				}},
 				// Namespace filter: Match everything or explicitly allow rename operations
-				agg.Or{
-					bson.D{},                            // empty document - matches everything
-					bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
-				},
+				{"$or", []bson.D{
+					{},                            // empty document - matches everything
+					{{"operationType", "rename"}}, // explicitly allow rename operations
+				}},
 			}}},
 
 			// Stage 3: Final projection with existing logic
