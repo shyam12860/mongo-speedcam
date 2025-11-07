@@ -186,21 +186,14 @@ func _runChangeStreamLoop(
 				},
 			}}},
 
-			// Stage 2: $project - Remove unnecessary fields for performance
+			// Stage 3: Final projection with existing logic
 			{{"$project", bson.D{
 				{"updateDescription", "$$REMOVE"},
-				// Keep all other fields
-				{"_id", 1},
 				{"operationType", 1},
 				{"ns", 1},
 				{"clusterTime", 1},
 				{"fullDocument", 1},
-			}}},
-
-			// Stage 3: Final projection with existing logic
-			{{"$project", bson.D{
 				{"_id", 1},
-				{"clusterTime", 1},
 				{"op", agg.Cond{
 					If:   agg.In("$operationType", eventsToTruncate...),
 					Then: agg.SubstrBytes{"$operationType", 0, 1},
