@@ -204,7 +204,7 @@ func _runChangeStreamLoop(
 			}}},
 		},
 		options.ChangeStream().
-			SetCustom(bson.M{"$_passthroughToShard": bson.D{{"shard", "shyam_profiling-DEST-Shard-1"}}}).
+			//SetCustom(bson.M{"$_passthroughToShard": bson.D{{"shard", "shyam_profiling-DEST-Shard-1"}}}).
 			SetCustomPipeline(bson.M{
 				"showSystemEvents":   true,
 				"showExpandedEvents": true,
