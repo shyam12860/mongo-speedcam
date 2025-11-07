@@ -181,10 +181,10 @@ func _runChangeStreamLoop(
 				//	{"$not", bson.D{{"$regex", "^system\\."}}},
 				//}},
 				// Namespace filter: Match everything or explicitly allow rename operations
-				{"$or", []bson.D{
-					{},                            // empty document - matches everything
-					{{"operationType", "rename"}}, // explicitly allow rename operations
-				}},
+				//{"$or", []bson.D{
+				//	{},                            // empty document - matches everything
+				//	{{"operationType", "rename"}}, // explicitly allow rename operations
+				//}},
 			}}},
 
 			// Stage 3: Final projection with existing logic
