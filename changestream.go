@@ -173,8 +173,8 @@ func _runChangeStreamLoop(
 			{{"$match", bson.D{
 				// Database filter: Allow only user databases
 				{"ns.db", bson.D{
-					{"$nin", []string{"mongosync_reserved_for_internal_use", "admin", "local", "config"}},
-					{"$not", bson.D{{"$regex", "^(mongosync_reserved_for_verification_|__mdb_internal)"}}},
+					{"$nin", []string{"mongosync_reserved_for_internal_use", "admin", "local", "config", "mongosync_reserved_for_verification_dst_metadata", "mongosync_reserved_for_verification_src_metadata"}},
+					{"$not", bson.D{{"$regex", "^__mdb_internal"}}},
 				}},
 				// Collection filter: Allow only non-system collections
 				{"ns.coll", bson.D{
