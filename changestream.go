@@ -226,6 +226,7 @@ func _runChangeStreamLoop(
 			totalStats, _, curStatsInterval := tallyEventsHistory(eventsHistory)
 
 			displayTable(totalStats.counts, totalStats.sizes, curStatsInterval)
+			displayNamespaceTable(totalStats.namespaceCounts, totalStats.namespaceSizes, curStatsInterval)
 
 			eventsRead := totalEventsRead.Load()
 			fmt.Printf("Change stream lag: %s | Events read: %d\n",
@@ -242,6 +243,8 @@ func _runChangeStreamLoop(
 	var curEventStats eventStats
 	initMap(&curEventStats.counts)
 	initMap(&curEventStats.sizes)
+	initMap(&curEventStats.namespaceCounts)
+	initMap(&curEventStats.namespaceSizes)
 
 	for cs.Next(sctx) {
 		// Increment total events read counter
@@ -253,13 +256,24 @@ func _runChangeStreamLoop(
 			op = fullOp
 		}
 
+		size := int(cs.Current.Lookup("size").AsInt64())
+
 		curEventStats.counts[op]++
-		curEventStats.sizes[op] += int(cs.Current.Lookup("size").AsInt64())
+		curEventStats.sizes[op] += size
+
+		// Track namespace statistics
+		nsDB := cs.Current.Lookup("ns", "db").StringValue()
+		nsColl := cs.Current.Lookup("ns", "coll").StringValue()
+		namespace := nsDB + "." + nsColl
+		curEventStats.namespaceCounts[namespace]++
+		curEventStats.namespaceSizes[namespace] += size
 
 		if cs.RemainingBatchLength() == 0 {
 			eventsHistory.Add(curEventStats)
 			initMap(&curEventStats.counts)
 			initMap(&curEventStats.sizes)
+			initMap(&curEventStats.namespaceCounts)
+			initMap(&curEventStats.namespaceSizes)
 		}
 
 		sessTS, err := GetClusterTimeFromSession(sess)
@@ -335,6 +349,7 @@ func _runChangeStreamLoopFilterManually(
 			totalStats, _, curStatsInterval := tallyEventsHistory(eventsHistory)
 
 			displayTable(totalStats.counts, totalStats.sizes, curStatsInterval)
+			displayNamespaceTable(totalStats.namespaceCounts, totalStats.namespaceSizes, curStatsInterval)
 
 			eventsRead := totalEventsRead.Load()
 			eventsFiltered := totalEventsFiltered.Load()
@@ -354,6 +369,8 @@ func _runChangeStreamLoopFilterManually(
 	var curEventStats eventStats
 	initMap(&curEventStats.counts)
 	initMap(&curEventStats.sizes)
+	initMap(&curEventStats.namespaceCounts)
+	initMap(&curEventStats.namespaceSizes)
 
 	// Pre-create map for fast database lookups
 	systemDatabases := map[string]bool{
@@ -431,10 +448,19 @@ func _runChangeStreamLoopFilterManually(
 		curEventStats.counts[op]++
 		curEventStats.sizes[op] += size
 
+		// Track namespace statistics
+		nsDB := cs.Current.Lookup("ns", "db").StringValue()
+		nsColl := cs.Current.Lookup("ns", "coll").StringValue()
+		namespace := nsDB + "." + nsColl
+		curEventStats.namespaceCounts[namespace]++
+		curEventStats.namespaceSizes[namespace] += size
+
 		if cs.RemainingBatchLength() == 0 {
 			eventsHistory.Add(curEventStats)
 			initMap(&curEventStats.counts)
 			initMap(&curEventStats.sizes)
+			initMap(&curEventStats.namespaceCounts)
+			initMap(&curEventStats.namespaceSizes)
 		}
 
 		sessTS, err := GetClusterTimeFromSession(sess)

@@ -7,7 +7,9 @@ import (
 )
 
 type eventStats struct {
-	sizes, counts map[string]int
+	sizes, counts       map[string]int
+	namespaceCounts     map[string]int // namespace -> count
+	namespaceSizes      map[string]int // namespace -> total size
 }
 
 func tallyEventsHistory(
@@ -18,6 +20,8 @@ func tallyEventsHistory(
 	totalStats := eventStats{}
 	initMap(&totalStats.counts)
 	initMap(&totalStats.sizes)
+	initMap(&totalStats.namespaceCounts)
+	initMap(&totalStats.namespaceSizes)
 
 	for _, curLog := range eventsInWindow {
 		for evtType, val := range curLog.Datum.counts {
@@ -35,6 +39,22 @@ func tallyEventsHistory(
 				totalStats.sizes[evtType] += val
 			}
 
+		}
+
+		for ns, val := range curLog.Datum.namespaceCounts {
+			if _, ok := totalStats.namespaceCounts[ns]; !ok {
+				totalStats.namespaceCounts[ns] = val
+			} else {
+				totalStats.namespaceCounts[ns] += val
+			}
+		}
+
+		for ns, val := range curLog.Datum.namespaceSizes {
+			if _, ok := totalStats.namespaceSizes[ns]; !ok {
+				totalStats.namespaceSizes[ns] = val
+			} else {
+				totalStats.namespaceSizes[ns] += val
+			}
 		}
 	}
 

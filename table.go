@@ -70,3 +70,53 @@ func displayTable(
 
 	fmt.Printf("Sample window: %s\n", delta.Round(10*time.Millisecond))
 }
+
+func displayNamespaceTable(
+	namespaceCounts map[string]int,
+	namespaceSizes map[string]int,
+	delta time.Duration,
+) {
+	if len(namespaceCounts) == 0 {
+		return
+	}
+
+	totalOps := lo.Sum(slices.Collect(maps.Values(namespaceCounts)))
+	totalSize := lo.Sum(slices.Collect(maps.Values(namespaceSizes)))
+
+	fmt.Print("\nPer-Namespace Statistics:\n")
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header([]string{
+		"Namespace",
+		"Ops",
+		"% of Ops",
+		"Size",
+		"% of Size",
+		"Ops/sec",
+	})
+
+	// Sort namespaces by operation count (descending)
+	namespaces := slices.Sorted(maps.Keys(namespaceCounts))
+	slices.SortFunc(namespaces, func(a, b string) int {
+		return namespaceCounts[b] - namespaceCounts[a]
+	})
+
+	for _, ns := range namespaces {
+		opsCount := namespaceCounts[ns]
+		size := namespaceSizes[ns]
+		opsFraction := mmmath.DivideToF64(opsCount, totalOps)
+		sizeFraction := mmmath.DivideToF64(size, totalSize)
+		opsPerSec := mmmath.DivideToF64(opsCount, delta.Seconds())
+
+		lo.Must0(table.Append([]string{
+			ns,
+			FmtReal(opsCount),
+			fmt.Sprintf("%s%%", FmtReal(100*opsFraction)),
+			FmtBytes(size),
+			fmt.Sprintf("%s%%", FmtReal(100*sizeFraction)),
+			FmtReal(opsPerSec),
+		}))
+	}
+
+	lo.Must0(table.Render())
+}
