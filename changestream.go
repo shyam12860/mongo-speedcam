@@ -317,6 +317,8 @@ func _runChangeStreamLoopFilterManually(
 	eventsHistory := history.New[eventStats](window)
 
 	var changeStreamLag atomic.Pointer[time.Duration]
+	var totalEventsRead atomic.Uint64
+	var totalEventsFiltered atomic.Uint64
 
 	go func() {
 		for {
@@ -326,7 +328,13 @@ func _runChangeStreamLoopFilterManually(
 
 			displayTable(totalStats.counts, totalStats.sizes, curStatsInterval)
 
-			fmt.Printf("Change stream lag: %s\n", lo.FromPtr(changeStreamLag.Load()))
+			eventsRead := totalEventsRead.Load()
+			eventsFiltered := totalEventsFiltered.Load()
+			fmt.Printf("Change stream lag: %s | Events read: %d | Events filtered: %d (%.1f%%)\n",
+				lo.FromPtr(changeStreamLag.Load()),
+				eventsRead,
+				eventsFiltered,
+				float64(eventsFiltered)/float64(eventsRead)*100.0)
 		}
 	}()
 
@@ -350,15 +358,17 @@ func _runChangeStreamLoopFilterManually(
 		if nsDB == "mongosync_reserved_for_internal_use" ||
 			nsDB == "admin" ||
 			nsDB == "local" ||
-			nsDB == "config" {
+			nsDB == "config" ||
+			nsDB == "mongosync_reserved_for_verification_src_metadata" ||
+			nsDB == "mongosync_reserved_for_verification_dst_metadata" {
 			return true
 		}
 
 		// Filter out databases starting with specific prefixes
-		if len(nsDB) >= len("mongosync_reserved_for_verification_") &&
-			nsDB[:len("mongosync_reserved_for_verification_")] == "mongosync_reserved_for_verification_" {
-			return true
-		}
+		//if len(nsDB) >= len("mongosync_reserved_for_verification_") &&
+		//	nsDB[:len("mongosync_reserved_for_verification_")] == "mongosync_reserved_for_verification_" {
+		//	return true
+		//}
 		if len(nsDB) >= len("__mdb_internal") &&
 			nsDB[:len("__mdb_internal")] == "__mdb_internal" {
 			return true
@@ -379,8 +389,12 @@ func _runChangeStreamLoopFilterManually(
 	}
 
 	for cs.Next(sctx) {
+		// Increment total events read counter
+		totalEventsRead.Add(1)
+
 		// Apply client-side filtering
 		if shouldFilterEvent(cs.Current) {
+			totalEventsFiltered.Add(1)
 			continue
 		}
 
