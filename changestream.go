@@ -181,24 +181,14 @@ func _runChangeStreamLoop(
 				agg.Expr(agg.Not{agg.Eq(0, agg.IndexOfCP("$ns.coll", "system.", 0, 1))}),
 				// Namespace filter: Match everything or explicitly allow rename operations
 				agg.Or{
-					bson.D{}, // empty document - matches everything
+					bson.D{},                            // empty document - matches everything
 					bson.D{{"operationType", "rename"}}, // explicitly allow rename operations
 				},
 			}}},
 
-			// Stage 2: $project - Remove unnecessary fields for performance
-			{{"$project", bson.D{
-				{"updateDescription", "$$REMOVE"},
-				// Keep all other fields
-				{"_id", 1},
-				{"operationType", 1},
-				{"ns", 1},
-				{"clusterTime", 1},
-				{"fullDocument", 1},
-			}}},
-
 			// Stage 3: Final projection with existing logic
 			{{"$project", bson.D{
+				{"updateDescription", "$$REMOVE"},
 				{"_id", 1},
 				{"clusterTime", 1},
 				{"op", agg.Cond{
@@ -207,6 +197,8 @@ func _runChangeStreamLoop(
 					Else: "$operationType",
 				}},
 				{"size", agg.BSONSize("$$ROOT")},
+				{"ns", 1},
+				{"fullDocument", 1},
 			}}},
 		},
 		options.ChangeStream().
