@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -354,6 +355,22 @@ func _runChangeStreamLoopFilterManually(
 	initMap(&curEventStats.counts)
 	initMap(&curEventStats.sizes)
 
+	// Pre-create map for fast database lookups
+	systemDatabases := map[string]bool{
+		"mongosync_reserved_for_internal_use":              true,
+		"admin":                                            true,
+		"local":                                            true,
+		"config":                                           true,
+		"mongosync_reserved_for_verification_src_metadata": true,
+		"mongosync_reserved_for_verification_dst_metadata": true,
+	}
+
+	// Database prefixes to filter
+	systemDBPrefixes := []string{
+		"mongosync_reserved_for_verification_",
+		"__mdb_internal",
+	}
+
 	// Helper function to check if event should be filtered out
 	shouldFilterEvent := func(event bson.Raw) bool {
 		// Get namespace info
@@ -361,35 +378,26 @@ func _runChangeStreamLoopFilterManually(
 		nsColl := event.Lookup("ns", "coll").StringValue()
 		operationType := event.Lookup("operationType").StringValue()
 
-		// Database filter: Filter out system databases
-		if nsDB == "mongosync_reserved_for_internal_use" ||
-			nsDB == "admin" ||
-			nsDB == "local" ||
-			nsDB == "config" ||
-			nsDB == "mongosync_reserved_for_verification_src_metadata" ||
-			nsDB == "mongosync_reserved_for_verification_dst_metadata" {
+		// Allow rename operations explicitly (early exit for common case)
+		if operationType == "rename" {
+			return false
+		}
+
+		// Database filter: Filter out system databases using map lookup
+		if systemDatabases[nsDB] {
 			return true
 		}
 
 		// Filter out databases starting with specific prefixes
-		//if len(nsDB) >= len("mongosync_reserved_for_verification_") &&
-		//	nsDB[:len("mongosync_reserved_for_verification_")] == "mongosync_reserved_for_verification_" {
-		//	return true
-		//}
-		if len(nsDB) >= len("__mdb_internal") &&
-			nsDB[:len("__mdb_internal")] == "__mdb_internal" {
-			return true
+		for _, prefix := range systemDBPrefixes {
+			if strings.HasPrefix(nsDB, prefix) {
+				return true
+			}
 		}
 
 		// Collection filter: Filter out system collections
-		if len(nsColl) >= len("system.") &&
-			nsColl[:len("system.")] == "system." {
+		if strings.HasPrefix(nsColl, "system.") {
 			return true
-		}
-
-		// Allow rename operations explicitly
-		if operationType == "rename" {
-			return false
 		}
 
 		return false
