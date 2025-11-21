@@ -114,6 +114,23 @@ func main() {
 				},
 			},
 			{
+				Name:    "tail-changestream-filter-manually",
+				Aliases: sliceOf("tf"),
+				Usage:   "measure by tailing a change stream (filtering manually on client side)",
+				Flags: []cli.Flag{
+					&durationFlag,
+					&windowFlag,
+				},
+				Action: func(ctx context.Context, c *cli.Command) error {
+					uri, err := getURI(c)
+					if err != nil {
+						return err
+					}
+
+					return _runChangeStreamLoopFilterManually(ctx, uri, c.Duration(windowFlag.Name), c.Duration(durationFlag.Name))
+				},
+			},
+			{
 				Name:    "serverstatusloop",
 				Aliases: sliceOf("ssl"),
 				Usage:   "measure via serverStatus (continually)",

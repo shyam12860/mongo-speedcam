@@ -270,3 +270,157 @@ func _runChangeStreamLoop(
 
 	return fmt.Errorf("unexpected end of change stream")
 }
+
+func _runChangeStreamLoopFilterManually(
+	ctx context.Context,
+	connstr string,
+	window, reportInterval time.Duration,
+) error {
+	client, err := getClient(connstr)
+	if err != nil {
+		return err
+	}
+
+	sess, err := client.StartSession()
+	if err != nil {
+		return fmt.Errorf("opening session: %w", err)
+	}
+
+	sctx := mongo.NewSessionContext(ctx, sess)
+
+	// Watch without $match filter - we'll filter on the client side
+	cs, err := client.Watch(
+		sctx,
+		mongo.Pipeline{
+			// Only projection, no $match stage
+			{{"$project", bson.D{
+				{"updateDescription", "$$REMOVE"},
+				{"_id", 1},
+				{"clusterTime", 1},
+				{"operationType", 1},
+				{"ns", 1},
+			}}},
+		},
+		options.ChangeStream().
+			SetCustomPipeline(bson.M{
+				"showSystemEvents":   true,
+				"showExpandedEvents": true,
+			}).SetFullDocument("updateLookup"),
+	)
+	if err != nil {
+		return fmt.Errorf("opening change stream: %w", err)
+	}
+	defer cs.Close(sctx)
+
+	fmt.Printf("Listening for change events (filtering manually). Stats showing every %s …\n", reportInterval)
+
+	eventsHistory := history.New[eventStats](window)
+
+	var changeStreamLag atomic.Pointer[time.Duration]
+
+	go func() {
+		for {
+			time.Sleep(reportInterval)
+
+			totalStats, _, curStatsInterval := tallyEventsHistory(eventsHistory)
+
+			displayTable(totalStats.counts, totalStats.sizes, curStatsInterval)
+
+			fmt.Printf("Change stream lag: %s\n", lo.FromPtr(changeStreamLag.Load()))
+		}
+	}()
+
+	fullEventName := map[string]string{}
+	for _, eventName := range eventsToTruncate {
+		fullEventName[eventName[:1]] = eventName
+	}
+
+	var curEventStats eventStats
+	initMap(&curEventStats.counts)
+	initMap(&curEventStats.sizes)
+
+	// Helper function to check if event should be filtered out
+	shouldFilterEvent := func(event bson.Raw) bool {
+		// Get namespace info
+		nsDB := event.Lookup("ns", "db").StringValue()
+		nsColl := event.Lookup("ns", "coll").StringValue()
+		operationType := event.Lookup("operationType").StringValue()
+
+		// Database filter: Filter out system databases
+		if nsDB == "mongosync_reserved_for_internal_use" ||
+			nsDB == "admin" ||
+			nsDB == "local" ||
+			nsDB == "config" {
+			return true
+		}
+
+		// Filter out databases starting with specific prefixes
+		if len(nsDB) >= len("mongosync_reserved_for_verification_") &&
+			nsDB[:len("mongosync_reserved_for_verification_")] == "mongosync_reserved_for_verification_" {
+			return true
+		}
+		if len(nsDB) >= len("__mdb_internal") &&
+			nsDB[:len("__mdb_internal")] == "__mdb_internal" {
+			return true
+		}
+
+		// Collection filter: Filter out system collections
+		if len(nsColl) >= len("system.") &&
+			nsColl[:len("system.")] == "system." {
+			return true
+		}
+
+		// Allow rename operations explicitly
+		if operationType == "rename" {
+			return false
+		}
+
+		return false
+	}
+
+	for cs.Next(sctx) {
+		// Apply client-side filtering
+		if shouldFilterEvent(cs.Current) {
+			continue
+		}
+
+		// Get operation type and convert to short form if needed
+		operationType := cs.Current.Lookup("operationType").StringValue()
+		op := operationType
+
+		// Check if this is an event to truncate
+		for _, eventName := range eventsToTruncate {
+			if operationType == eventName {
+				op = eventName[:1]
+				break
+			}
+		}
+
+		// Calculate size
+		size := len(cs.Current)
+
+		curEventStats.counts[op]++
+		curEventStats.sizes[op] += size
+
+		if cs.RemainingBatchLength() == 0 {
+			eventsHistory.Add(curEventStats)
+			initMap(&curEventStats.counts)
+			initMap(&curEventStats.sizes)
+		}
+
+		sessTS, err := GetClusterTimeFromSession(sess)
+		if err != nil {
+
+		} else {
+			eventT, _ := cs.Current.Lookup("clusterTime").Timestamp()
+
+			lagSecs := int64(sessTS.T) - int64(eventT)
+			changeStreamLag.Store(lo.ToPtr(time.Duration(lagSecs) * time.Second))
+		}
+	}
+	if cs.Err() != nil {
+		return fmt.Errorf("reading change stream: %w", cs.Err())
+	}
+
+	return fmt.Errorf("unexpected end of change stream")
+}
