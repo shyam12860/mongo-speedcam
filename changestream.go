@@ -198,7 +198,6 @@ func _runChangeStreamLoop(
 				}},
 				{"size", agg.BSONSize("$$ROOT")},
 				{"ns", 1},
-				{"fullDocument", 1},
 			}}},
 		},
 		options.ChangeStream().
