@@ -424,6 +424,16 @@ func _runChangeStreamLoopFilterManually(
 		// Increment total events read counter
 		totalEventsRead.Add(1)
 
+		// Calculate size
+		size := len(cs.Current)
+
+		// Track namespace statistics BEFORE filtering
+		nsDB := cs.Current.Lookup("ns", "db").StringValue()
+		nsColl := cs.Current.Lookup("ns", "coll").StringValue()
+		namespace := nsDB + "." + nsColl
+		curEventStats.namespaceCounts[namespace]++
+		curEventStats.namespaceSizes[namespace] += size
+
 		// Apply client-side filtering
 		if shouldFilterEvent(cs.Current) {
 			totalEventsFiltered.Add(1)
@@ -442,18 +452,8 @@ func _runChangeStreamLoopFilterManually(
 			}
 		}
 
-		// Calculate size
-		size := len(cs.Current)
-
 		curEventStats.counts[op]++
 		curEventStats.sizes[op] += size
-
-		// Track namespace statistics
-		nsDB := cs.Current.Lookup("ns", "db").StringValue()
-		nsColl := cs.Current.Lookup("ns", "coll").StringValue()
-		namespace := nsDB + "." + nsColl
-		curEventStats.namespaceCounts[namespace]++
-		curEventStats.namespaceSizes[namespace] += size
 
 		if cs.RemainingBatchLength() == 0 {
 			eventsHistory.Add(curEventStats)
