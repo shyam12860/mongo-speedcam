@@ -99,7 +99,7 @@ func main() {
 			{
 				Name:    "tail-changestream",
 				Aliases: sliceOf("tcs"),
-				Usage:   "measure by tailing a change stream",
+				Usage:   "measure by tailing a change stream (with server-side filter)",
 				Flags: []cli.Flag{
 					&durationFlag,
 					&windowFlag,
@@ -111,6 +111,23 @@ func main() {
 					}
 
 					return _runChangeStreamLoop(ctx, uri, c.Duration(windowFlag.Name), c.Duration(durationFlag.Name))
+				},
+			},
+			{
+				Name:    "tail-changestream-no-filter",
+				Aliases: sliceOf("tnf"),
+				Usage:   "measure by tailing a change stream (no filter - all events)",
+				Flags: []cli.Flag{
+					&durationFlag,
+					&windowFlag,
+				},
+				Action: func(ctx context.Context, c *cli.Command) error {
+					uri, err := getURI(c)
+					if err != nil {
+						return err
+					}
+
+					return _runChangeStreamLoopNoFilter(ctx, uri, c.Duration(windowFlag.Name), c.Duration(durationFlag.Name))
 				},
 			},
 			{

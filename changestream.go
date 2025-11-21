@@ -150,6 +150,130 @@ cursorLoop:
 	return nil
 }
 
+func _runChangeStreamLoopNoFilter(
+	ctx context.Context,
+	connstr string,
+	window, reportInterval time.Duration,
+) error {
+	client, err := getClient(connstr)
+	if err != nil {
+		return err
+	}
+
+	sess, err := client.StartSession()
+	if err != nil {
+		return fmt.Errorf("opening session: %w", err)
+	}
+
+	sctx := mongo.NewSessionContext(ctx, sess)
+
+	cs, err := client.Watch(
+		sctx,
+		mongo.Pipeline{
+			{{"$project", bson.D{
+				{"_id", 1},
+				{"clusterTime", 1},
+				{"op", agg.Cond{
+					If:   agg.In("$operationType", eventsToTruncate...),
+					Then: agg.SubstrBytes{"$operationType", 0, 1},
+					Else: "$operationType",
+				}},
+				{"size", agg.BSONSize("$$ROOT")},
+				{"ns", 1},
+			}}},
+		},
+		options.ChangeStream().
+			SetCustomPipeline(bson.M{
+				"showSystemEvents":   true,
+				"showExpandedEvents": true,
+			}).SetFullDocument("updateLookup"),
+	)
+	if err != nil {
+		return fmt.Errorf("opening change stream: %w", err)
+	}
+	defer cs.Close(sctx)
+
+	fmt.Printf("Listening for change events (no filter). Stats showing every %s …\n", reportInterval)
+
+	eventsHistory := history.New[eventStats](window)
+
+	var changeStreamLag atomic.Pointer[time.Duration]
+	var totalEventsRead atomic.Uint64
+
+	go func() {
+		for {
+			time.Sleep(reportInterval)
+
+			totalStats, _, curStatsInterval := tallyEventsHistory(eventsHistory)
+
+			displayTable(totalStats.counts, totalStats.sizes, curStatsInterval)
+			displayNamespaceTable(totalStats.namespaceCounts, totalStats.namespaceSizes, curStatsInterval)
+
+			eventsRead := totalEventsRead.Load()
+			fmt.Printf("Change stream lag: %s | Events read: %d\n",
+				lo.FromPtr(changeStreamLag.Load()),
+				eventsRead)
+		}
+	}()
+
+	fullEventName := map[string]string{}
+	for _, eventName := range eventsToTruncate {
+		fullEventName[eventName[:1]] = eventName
+	}
+
+	var curEventStats eventStats
+	initMap(&curEventStats.counts)
+	initMap(&curEventStats.sizes)
+	initMap(&curEventStats.namespaceCounts)
+	initMap(&curEventStats.namespaceSizes)
+
+	for cs.Next(sctx) {
+		// Increment total events read counter
+		totalEventsRead.Add(1)
+
+		op := cs.Current.Lookup("op").StringValue()
+
+		if fullOp, isShortened := fullEventName[op]; isShortened {
+			op = fullOp
+		}
+
+		size := int(cs.Current.Lookup("size").AsInt64())
+
+		curEventStats.counts[op]++
+		curEventStats.sizes[op] += size
+
+		// Track namespace statistics
+		nsDB := cs.Current.Lookup("ns", "db").StringValue()
+		nsColl := cs.Current.Lookup("ns", "coll").StringValue()
+		namespace := nsDB + "." + nsColl
+		curEventStats.namespaceCounts[namespace]++
+		curEventStats.namespaceSizes[namespace] += size
+
+		if cs.RemainingBatchLength() == 0 {
+			eventsHistory.Add(curEventStats)
+			initMap(&curEventStats.counts)
+			initMap(&curEventStats.sizes)
+			initMap(&curEventStats.namespaceCounts)
+			initMap(&curEventStats.namespaceSizes)
+		}
+
+		sessTS, err := GetClusterTimeFromSession(sess)
+		if err != nil {
+
+		} else {
+			eventT, _ := cs.Current.Lookup("clusterTime").Timestamp()
+
+			lagSecs := int64(sessTS.T) - int64(eventT)
+			changeStreamLag.Store(lo.ToPtr(time.Duration(lagSecs) * time.Second))
+		}
+	}
+	if cs.Err() != nil {
+		return fmt.Errorf("reading change stream: %w", cs.Err())
+	}
+
+	return fmt.Errorf("unexpected end of change stream")
+}
+
 func _runChangeStreamLoop(
 	ctx context.Context,
 	connstr string,
