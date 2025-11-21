@@ -216,6 +216,7 @@ func _runChangeStreamLoop(
 	eventsHistory := history.New[eventStats](window)
 
 	var changeStreamLag atomic.Pointer[time.Duration]
+	var totalEventsRead atomic.Uint64
 
 	go func() {
 		for {
@@ -225,7 +226,10 @@ func _runChangeStreamLoop(
 
 			displayTable(totalStats.counts, totalStats.sizes, curStatsInterval)
 
-			fmt.Printf("Change stream lag: %s\n", lo.FromPtr(changeStreamLag.Load()))
+			eventsRead := totalEventsRead.Load()
+			fmt.Printf("Change stream lag: %s | Events read: %d\n",
+				lo.FromPtr(changeStreamLag.Load()),
+				eventsRead)
 		}
 	}()
 
@@ -239,6 +243,9 @@ func _runChangeStreamLoop(
 	initMap(&curEventStats.sizes)
 
 	for cs.Next(sctx) {
+		// Increment total events read counter
+		totalEventsRead.Add(1)
+
 		op := cs.Current.Lookup("op").StringValue()
 
 		if fullOp, isShortened := fullEventName[op]; isShortened {
